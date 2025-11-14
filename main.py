@@ -2,6 +2,7 @@ import pygame
 import random
 import sys
 import math
+import numpy as np
 from snake import Snake
 
 # Inicializa o pygame
@@ -25,14 +26,14 @@ fonte = pygame.font.SysFont("Arial", 24)
 tamanho_celula = 20
 
 def desenhar_cobra(cobra):
-    for segmento in cobra:
+    for segmento in cobra.positions:
         pygame.draw.rect(tela, VERDE, (segmento[0], segmento[1], tamanho_celula, tamanho_celula))
 
 def desenhar_comida(comida):
     pygame.draw.rect(tela, VERMELHO, (comida[0], comida[1], tamanho_celula, tamanho_celula))
 
 def mover_cobra(cobra, direcao):
-    x, y = cobra[0]
+    x, y = cobra.positions[0]
     if direcao == "N":
         nova_cabeca = (x, y - tamanho_celula)
     elif direcao == "S":
@@ -41,21 +42,26 @@ def mover_cobra(cobra, direcao):
         nova_cabeca = (x + tamanho_celula, y)
     elif direcao == "O":
         nova_cabeca = (x - tamanho_celula, y)
-    cobra.insert(0, nova_cabeca)
-    return cobra
+
+    return nova_cabeca
 
 def verificar_colisao(cobra):
-    x, y = cobra[0]
+    copia = cobra.positions.copy()
+    cabeca = copia.popleft()
+
+    x, y = cobra.positions[0]
     if x < 0 or x >= largura or y < 0 or y >= altura:
         return True
-    if cobra[0] in cobra[1:]:
+    if cabeca in copia:
         return True
     return False
 
 def coletar_recompensas(cobra, fruta, direcao_atual, tamanho_celula):
-    analizar_cobra = cobra.copy()
-    cabeca = analizar_cobra.positions.popleft()
-
+    analizar_cobra = cobra.positions.copy()
+    cabeca = analizar_cobra[0]
+    analizar_cobra.popleft()
+    
+    print(fruta, cabeca)
     dist = math.dist(fruta, cabeca)
     existem_obstaculos = 0
     n_obstaculos = 0
@@ -78,32 +84,35 @@ def coletar_recompensas(cobra, fruta, direcao_atual, tamanho_celula):
 
     return dist, existem_obstaculos, n_obstaculos, colisao_iminente
 
-        
-    
+def direcao_reversa(direcao):
+    if direcao == 'L':
+        return ['S', 'N', 'L']
 
-def atualizar_direcao(tecla, direcao_atual):
-    if tecla == pygame.K_UP and direcao_atual != "S":
-        return "N"
-    elif tecla == pygame.K_DOWN and direcao_atual != "N":
-        return "S"
-    elif tecla == pygame.K_RIGHT and direcao_atual != "O":
-        return "L"
-    elif tecla == pygame.K_LEFT and direcao_atual != "L":
-        return "O"
-    return direcao_atual
+    if direcao == 'O':
+        return ['N', 'S', 'O']
+
+    if direcao == 'S':
+        return ['S', 'O', 'L']
+
+    if direcao == 'N':
+        return ['N', 'L', 'O']      
+    
 
 def mostrar_pontuacao(pontos):
     texto = fonte.render(f"Pontuação: {pontos}", True, BRANCO)
     tela.blit(texto, (10, 10))
 
 def jogo():
-    cobra = Snake([(100, 100), (80, 100), (60, 100)])
+    cobra = Snake((100, 100), (80, 100), (60, 100))
     direcao = "L"
+    cobra.brain.direcoes.remove("O")
     comida = (random.randrange(0, largura, tamanho_celula),
               random.randrange(0, altura, tamanho_celula))
+    
+    anterior = np.ones((4,))
     pontos = 0
     clock = pygame.time.Clock()
-    ai_mode = False
+    ai_mode = True
 
     while True:
         for evento in pygame.event.get():
@@ -118,19 +127,23 @@ def jogo():
                 if not ai_mode:
                     direcao = atualizar_direcao(evento.key, direcao)
 
-        if ai_mode:            
+        if ai_mode:   
+            cobra.brain.direcoes = direcao_reversa(direcao)
             recompensas = coletar_recompensas(cobra=cobra, fruta=comida, direcao_atual=direcao, tamanho_celula=tamanho_celula)
-            direcao = atualizar_direcao(cobra.proxima_direcao(recompensas), direcao)
-            cobra.
+            direcao_nova, anterior = cobra.proxima_direcao(recompensas, np.array(anterior))
+            anterior = (recompensas[0], *anterior[0])
+            direcao = direcao_nova
+            
 
-        cobra = mover_cobra(cobra, direcao)
-
-        if cobra[0] == comida:
+        if list(cobra.positions)[0] == comida:
             pontos += 1
             comida = (random.randrange(0, largura, tamanho_celula),
                       random.randrange(0, altura, tamanho_celula))
+            
+            cobra.forward(mover_cobra(cobra, direcao), True)
+
         else:
-            cobra.pop()
+            cobra.forward(mover_cobra(cobra, direcao))
 
         if verificar_colisao(cobra):
             return pontos  # retorna pontuação final para reinício
